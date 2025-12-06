@@ -1165,7 +1165,10 @@ coef_df$Significant <- ifelse(coef_df$p.value < 0.001, "***",
                         ifelse(coef_df$p.value < 0.1, ".", ""))))
 
 cat("=== Coefficient Interpretation ===\n\n")
-print(round(coef_df, 4))
+# Print numeric columns rounded, keep Significant as is
+coef_df_print <- coef_df
+coef_df_print[, 1:7] <- round(coef_df_print[, 1:7], 4)
+print(coef_df_print)
 ```
 
 ```{r}
@@ -1362,17 +1365,28 @@ conf_matrix <- table(Actual = model_data$fraudulent, Predicted = model_data$pred
 cat("=== Confusion Matrix (threshold = 0.5) ===\n\n")
 print(conf_matrix)
 
-# Performance metrics
-TP <- conf_matrix[2, 2]
-TN <- conf_matrix[1, 1]
-FP <- conf_matrix[1, 2]
-FN <- conf_matrix[2, 1]
+# Performance metrics - handle case where not all classes are predicted
+# Create a full 2x2 matrix to handle missing predictions
+full_matrix <- matrix(0, nrow = 2, ncol = 2,
+                      dimnames = list(Actual = c("0", "1"), Predicted = c("0", "1")))
 
-accuracy <- (TP + TN) / sum(conf_matrix)
-precision <- TP / (TP + FP)
-recall <- TP / (TP + FN)  # Sensitivity
-specificity <- TN / (TN + FP)
-f1_score <- 2 * precision * recall / (precision + recall)
+# Fill in values from conf_matrix
+for (i in rownames(conf_matrix)) {
+  for (j in colnames(conf_matrix)) {
+    full_matrix[i, j] <- conf_matrix[i, j]
+  }
+}
+
+TP <- full_matrix["1", "1"]
+TN <- full_matrix["0", "0"]
+FP <- full_matrix["0", "1"]
+FN <- full_matrix["1", "0"]
+
+accuracy <- (TP + TN) / sum(full_matrix)
+precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
+recall <- ifelse((TP + FN) > 0, TP / (TP + FN), 0)  # Sensitivity
+specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), 0)
+f1_score <- ifelse((precision + recall) > 0, 2 * precision * recall / (precision + recall), 0)
 
 cat("\n=== Performance Metrics ===\n\n")
 cat("Accuracy:", round(accuracy * 100, 2), "%\n")
@@ -1380,6 +1394,9 @@ cat("Precision:", round(precision * 100, 2), "%\n")
 cat("Recall (Sensitivity):", round(recall * 100, 2), "%\n")
 cat("Specificity:", round(specificity * 100, 2), "%\n")
 cat("F1 Score:", round(f1_score, 4), "\n")
+
+cat("\nNote: With imbalanced data, the default threshold of 0.5 may not be optimal.\n")
+cat("Consider using a lower threshold to improve recall for fraud detection.\n")
 ```
 
 ```{r fig.width=10, fig.height=5}
