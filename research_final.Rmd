@@ -117,8 +117,8 @@ standardize_salary <- function(salary_str) {
     return(c(NA, NA))
   }
 
-  lower <- as.numeric(parts[1])
-  upper <- as.numeric(parts[2])
+  lower <- suppressWarnings(as.numeric(parts[1]))
+  upper <- suppressWarnings(as.numeric(parts[2]))
 
   # Handle zero values as NA
   if (!is.na(lower) && lower == 0) lower <- NA
@@ -173,6 +173,9 @@ data <- data %>%
 
     # Empty company profile indicator
     empty_profile = is.na(company_profile) | company_profile == "",
+
+    # US location indicator (for salary analysis - avoid currency issues)
+    is_us = grepl("^US", location),
 
     # California location indicator
     is_california = grepl("^US, CA", location),
@@ -233,7 +236,7 @@ cat("Fraud rate:", round(n_fake / nrow(data) * 100, 2), "%\n")
 ```{r fig.width=8, fig.height=5}
 ggplot(data, aes(x = factor(fraudulent), fill = factor(fraudulent))) +
   geom_bar() +
-  geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
+  geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5) +
   scale_fill_manual(values = c("0" = "#3498db", "1" = "#e74c3c"),
                     labels = c("Real", "Fraudulent")) +
   labs(title = "1. Ratio of Real (0) and Fraudulent (1) Vacancies",
@@ -251,14 +254,14 @@ The dataset is highly imbalanced with approximately 95% real postings and 5% fra
 ### 4.2.1 Salary Distribution by Fraud Status
 
 ```{r fig.width=10, fig.height=5}
-# Filter to only entries with valid salary data
-salary_data <- data %>% filter(!is.na(salary_mid))
+# Filter to only US entries with valid salary data (avoid currency issues)
+salary_data <- data %>% filter(!is.na(salary_mid) & is_us)
 
 ggplot(salary_data, aes(x = salary_mid, fill = factor(fraudulent))) +
   geom_histogram(bins = 50, alpha = 0.7, position = "identity") +
   scale_fill_manual(values = c("0" = "#3498db", "1" = "#e74c3c"),
                     labels = c("Real", "Fraudulent")) +
-  labs(title = "Salary Distribution: Real vs Fraudulent Postings",
+  labs(title = "Salary Distribution: Real vs Fraudulent Postings (US Only)",
        x = "Salary (Midpoint)",
        y = "Count",
        fill = "Type") +
@@ -270,9 +273,9 @@ ggplot(salary_data, aes(x = salary_mid, fill = factor(fraudulent))) +
 ### 4.2.2 Fraud Probability by Salary Category
 
 ```{r fig.width=10, fig.height=5}
-# Calculate fraud probability by salary category
+# Calculate fraud probability by salary category (US only to avoid currency issues)
 salary_fraud_prob <- data %>%
-  filter(salary_category != "Unknown") %>%
+  filter(salary_category != "Unknown" & is_us) %>%
   group_by(salary_category) %>%
   summarise(
     total = n(),
@@ -289,7 +292,7 @@ ggplot(salary_fraud_prob, aes(x = salary_category, y = fraud_probability, fill =
   scale_fill_manual(values = c("<20k" = "#9b59b6", "20k-50k" = "#e67e22",
                                 "50k-100k" = "#3498db", "100k-200k" = "#1abc9c", ">200k" = "#e74c3c")) +
   labs(title = "Do Scammers Lure You with High Salaries?",
-       subtitle = "(Probability of fake depending on the amount)",
+       subtitle = "(Probability of fake depending on the amount - US only)",
        x = "Salary",
        y = "Probability of Fraud") +
   theme_minimal() +
@@ -301,17 +304,21 @@ This visualization shows whether fraudulent postings tend to offer unrealistical
 ### 4.2.3 Salary Statistics by Group
 
 ```{r}
-cat("=== Salary Statistics ===\n\n")
+cat("=== Salary Statistics (US Only) ===\n\n")
 
-cat("REAL postings with salary data:", sum(!is.na(real_data$salary_mid)), "\n")
-cat("Mean salary:", round(mean(real_data$salary_mid, na.rm = TRUE), 2), "\n")
-cat("Median salary:", round(median(real_data$salary_mid, na.rm = TRUE), 2), "\n")
-cat("SD:", round(sd(real_data$salary_mid, na.rm = TRUE), 2), "\n\n")
+# Filter for US only to avoid currency issues
+real_data_us <- real_data %>% filter(is_us)
+fraudulent_data_us <- fraudulent_data %>% filter(is_us)
 
-cat("FRAUDULENT postings with salary data:", sum(!is.na(fraudulent_data$salary_mid)), "\n")
-cat("Mean salary:", round(mean(fraudulent_data$salary_mid, na.rm = TRUE), 2), "\n")
-cat("Median salary:", round(median(fraudulent_data$salary_mid, na.rm = TRUE), 2), "\n")
-cat("SD:", round(sd(fraudulent_data$salary_mid, na.rm = TRUE), 2), "\n")
+cat("REAL postings with salary data:", sum(!is.na(real_data_us$salary_mid)), "\n")
+cat("Mean salary:", round(mean(real_data_us$salary_mid, na.rm = TRUE), 2), "\n")
+cat("Median salary:", round(median(real_data_us$salary_mid, na.rm = TRUE), 2), "\n")
+cat("SD:", round(sd(real_data_us$salary_mid, na.rm = TRUE), 2), "\n\n")
+
+cat("FRAUDULENT postings with salary data:", sum(!is.na(fraudulent_data_us$salary_mid)), "\n")
+cat("Mean salary:", round(mean(fraudulent_data_us$salary_mid, na.rm = TRUE), 2), "\n")
+cat("Median salary:", round(median(fraudulent_data_us$salary_mid, na.rm = TRUE), 2), "\n")
+cat("SD:", round(sd(fraudulent_data_us$salary_mid, na.rm = TRUE), 2), "\n")
 ```
 
 ## 4.3 Description Length Analysis
@@ -571,9 +578,9 @@ cat("=== KEY FINDINGS FROM EDA ===\n\n")
 cat("1. CLASS IMBALANCE:\n")
 cat("   - Dataset is highly imbalanced (~95% real, ~5% fake)\n\n")
 
-cat("2. SALARY PATTERNS:\n")
-cat("   - Real postings mean salary:", round(mean(real_data$salary_mid, na.rm = TRUE), 0), "\n")
-cat("   - Fake postings mean salary:", round(mean(fraudulent_data$salary_mid, na.rm = TRUE), 0), "\n")
+cat("2. SALARY PATTERNS (US only to avoid currency issues):\n")
+cat("   - Real postings mean salary:", round(mean(real_data_us$salary_mid, na.rm = TRUE), 0), "\n")
+cat("   - Fake postings mean salary:", round(mean(fraudulent_data_us$salary_mid, na.rm = TRUE), 0), "\n")
 cat("   - Very high salaries (>200k) show elevated fraud rates\n\n")
 
 cat("3. DESCRIPTION LENGTH:\n")
@@ -597,8 +604,9 @@ The following variables are now ready for hypothesis testing:
 
 ```{r}
 # Extract variables needed for hypothesis testing
-salary_fraud <- fraudulent_data %>% filter(!is.na(salary_mid)) %>% pull(salary_mid)
-salary_real <- real_data %>% filter(!is.na(salary_mid)) %>% pull(salary_mid)
+# For salary: only use US postings to avoid currency issues
+salary_fraud <- fraudulent_data %>% filter(!is.na(salary_mid) & is_us) %>% pull(salary_mid)
+salary_real <- real_data %>% filter(!is.na(salary_mid) & is_us) %>% pull(salary_mid)
 
 fraud_desc <- fraudulent_data %>% pull(desc_length)
 real_desc <- real_data %>% pull(desc_length)
@@ -625,9 +633,9 @@ n_salary_real <- length(salary_real)
 
 # 7. Hypothesis Testing
 
-## 7.1 Hypothesis 1: Mean Salary Comparison
+## 7.1 Hypothesis 1: Mean Salary Comparison (US Only)
 
-**Research Question:** Do fraudulent job postings offer different salary ranges compared to real ones?
+**Research Question:** Do fraudulent job postings offer different salary ranges compared to real ones? (Analyzing US postings only to avoid currency issues.)
 
 We test:
 
@@ -1091,10 +1099,11 @@ $$
 ## 9.4 Prepare Data for Logistic Regression
 
 ```{r}
-# Create a clean dataset for logistic regression
+# Create a clean dataset for logistic regression (US only to avoid currency issues)
 model_data <- data %>%
+  filter(is_us) %>%
   mutate(
-    # Standardize salary (use midpoint, fill NA with median)
+    # Standardize salary (use midpoint, fill NA with median from US data)
     salary_standardized = ifelse(is.na(salary_mid), median(salary_mid, na.rm = TRUE), salary_mid),
     salary_standardized = scale(salary_standardized)[,1],
 
@@ -1352,52 +1361,127 @@ if (lr_pvalue < 0.05) {
 
 ## 9.9 Prediction Performance
 
+### 9.9.1 Find Optimal Threshold
+
 ```{r}
 # Predicted probabilities
 model_data$predicted_prob <- predict(logit_model, type = "response")
 
-# Classification at threshold 0.5
-model_data$predicted_class <- ifelse(model_data$predicted_prob > 0.5, 1, 0)
+# Find optimal threshold by maximizing F1 score
+thresholds <- seq(0.01, 0.99, by = 0.01)
+f1_scores <- sapply(thresholds, function(t) {
+  pred <- ifelse(model_data$predicted_prob > t, 1, 0)
 
-# Confusion matrix
-conf_matrix <- table(Actual = model_data$fraudulent, Predicted = model_data$predicted_class)
+  TP <- sum(pred == 1 & model_data$fraudulent == 1)
+  FP <- sum(pred == 1 & model_data$fraudulent == 0)
+  FN <- sum(pred == 0 & model_data$fraudulent == 1)
 
-cat("=== Confusion Matrix (threshold = 0.5) ===\n\n")
-print(conf_matrix)
+  precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
+  recall <- ifelse((TP + FN) > 0, TP / (TP + FN), 0)
+  f1 <- ifelse((precision + recall) > 0, 2 * precision * recall / (precision + recall), 0)
 
-# Performance metrics - handle case where not all classes are predicted
-# Create a full 2x2 matrix to handle missing predictions
-full_matrix <- matrix(0, nrow = 2, ncol = 2,
-                      dimnames = list(Actual = c("0", "1"), Predicted = c("0", "1")))
+  return(f1)
+})
 
-# Fill in values from conf_matrix
-for (i in rownames(conf_matrix)) {
-  for (j in colnames(conf_matrix)) {
-    full_matrix[i, j] <- conf_matrix[i, j]
-  }
+# Select optimal threshold
+optimal_threshold <- thresholds[which.max(f1_scores)]
+max_f1 <- max(f1_scores)
+
+cat("=== Optimal Threshold Selection ===\n\n")
+cat("Optimal threshold (maximizing F1):", round(optimal_threshold, 3), "\n")
+cat("F1 score at optimal threshold:", round(max_f1, 4), "\n\n")
+```
+
+```{r fig.width=10, fig.height=5}
+# Plot F1 score vs threshold
+threshold_df <- data.frame(threshold = thresholds, f1_score = f1_scores)
+
+ggplot(threshold_df, aes(x = threshold, y = f1_score)) +
+  geom_line(color = "#3498db", size = 1) +
+  geom_vline(xintercept = optimal_threshold, linetype = "dashed", color = "#e74c3c") +
+  geom_vline(xintercept = 0.5, linetype = "dotted", color = "gray") +
+  annotate("text", x = optimal_threshold, y = max_f1 * 0.95,
+           label = paste0("Optimal: ", round(optimal_threshold, 3)),
+           hjust = -0.1, color = "#e74c3c") +
+  annotate("text", x = 0.5, y = max_f1 * 0.9,
+           label = "Default: 0.5", hjust = 1.1, color = "gray") +
+  labs(title = "F1 Score vs Classification Threshold",
+       x = "Threshold",
+       y = "F1 Score") +
+  theme_minimal()
+```
+
+### 9.9.2 Performance at Optimal Threshold
+
+```{r}
+# Helper function to calculate metrics
+calculate_metrics <- function(actual, predicted) {
+  TP <- sum(predicted == 1 & actual == 1)
+  TN <- sum(predicted == 0 & actual == 0)
+  FP <- sum(predicted == 1 & actual == 0)
+  FN <- sum(predicted == 0 & actual == 1)
+
+  accuracy <- (TP + TN) / length(actual)
+  precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
+  recall <- ifelse((TP + FN) > 0, TP / (TP + FN), 0)
+  specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), 0)
+  f1 <- ifelse((precision + recall) > 0, 2 * precision * recall / (precision + recall), 0)
+
+  return(list(
+    confusion = matrix(c(TN, FP, FN, TP), nrow = 2,
+                      dimnames = list(Actual = c("0", "1"), Predicted = c("0", "1"))),
+    TP = TP, TN = TN, FP = FP, FN = FN,
+    accuracy = accuracy, precision = precision,
+    recall = recall, specificity = specificity, f1 = f1
+  ))
 }
 
-TP <- full_matrix["1", "1"]
-TN <- full_matrix["0", "0"]
-FP <- full_matrix["0", "1"]
-FN <- full_matrix["1", "0"]
+# Classification at optimal threshold
+pred_optimal <- ifelse(model_data$predicted_prob > optimal_threshold, 1, 0)
+metrics_optimal <- calculate_metrics(model_data$fraudulent, pred_optimal)
 
-accuracy <- (TP + TN) / sum(full_matrix)
-precision <- ifelse((TP + FP) > 0, TP / (TP + FP), 0)
-recall <- ifelse((TP + FN) > 0, TP / (TP + FN), 0)  # Sensitivity
-specificity <- ifelse((TN + FP) > 0, TN / (TN + FP), 0)
-f1_score <- ifelse((precision + recall) > 0, 2 * precision * recall / (precision + recall), 0)
+# Classification at default threshold 0.5 for comparison
+pred_default <- ifelse(model_data$predicted_prob > 0.5, 1, 0)
+metrics_default <- calculate_metrics(model_data$fraudulent, pred_default)
 
-cat("\n=== Performance Metrics ===\n\n")
-cat("Accuracy:", round(accuracy * 100, 2), "%\n")
-cat("Precision:", round(precision * 100, 2), "%\n")
-cat("Recall (Sensitivity):", round(recall * 100, 2), "%\n")
-cat("Specificity:", round(specificity * 100, 2), "%\n")
-cat("F1 Score:", round(f1_score, 4), "\n")
+cat("=== Confusion Matrix (threshold = ", round(optimal_threshold, 3), ") ===\n\n", sep = "")
+print(metrics_optimal$confusion)
 
-cat("\nNote: With imbalanced data, the default threshold of 0.5 may not be optimal.\n")
-cat("Consider using a lower threshold to improve recall for fraud detection.\n")
+cat("\n=== Performance Metrics at Optimal Threshold ===\n\n")
+cat("Accuracy:", round(metrics_optimal$accuracy * 100, 2), "%\n")
+cat("Precision:", round(metrics_optimal$precision * 100, 2), "%\n")
+cat("Recall (Sensitivity):", round(metrics_optimal$recall * 100, 2), "%\n")
+cat("Specificity:", round(metrics_optimal$specificity * 100, 2), "%\n")
+cat("F1 Score:", round(metrics_optimal$f1, 4), "\n")
+
+cat("\n=== Comparison with Default Threshold (0.5) ===\n\n")
+cat(sprintf("%-20s %10s %10s\n", "Metric", "Optimal", "Default"))
+cat(sprintf("%-20s %10s %10s\n", paste(rep("-", 20), collapse=""),
+            paste(rep("-", 10), collapse=""), paste(rep("-", 10), collapse="")))
+cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Accuracy",
+            metrics_optimal$accuracy * 100, metrics_default$accuracy * 100))
+cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Precision",
+            metrics_optimal$precision * 100, metrics_default$precision * 100))
+cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Recall",
+            metrics_optimal$recall * 100, metrics_default$recall * 100))
+cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Specificity",
+            metrics_optimal$specificity * 100, metrics_default$specificity * 100))
+cat(sprintf("%-20s %10.4f %10.4f\n", "F1 Score",
+            metrics_optimal$f1, metrics_default$f1))
+
+cat("\nInterpretation:\n")
+cat("- Optimal threshold balances precision and recall for fraud detection\n")
+cat("- Lower threshold increases recall (catches more frauds) at cost of some precision\n")
+cat("- For fraud detection, higher recall is often preferred to minimize false negatives\n")
+
+# Store for later use
+accuracy <- metrics_optimal$accuracy
+precision <- metrics_optimal$precision
+recall <- metrics_optimal$recall
+f1_score <- metrics_optimal$f1
 ```
+
+### 9.9.3 ROC Curve and AUC
 
 ```{r fig.width=10, fig.height=5}
 # ROC Curve (manual calculation)
@@ -1418,15 +1502,25 @@ roc_data <- data.frame(
 roc_data <- roc_data[order(roc_data$FPR), ]
 auc <- sum(diff(roc_data$FPR) * (head(roc_data$TPR, -1) + tail(roc_data$TPR, -1)) / 2)
 
+# Find the point on ROC curve for optimal threshold
+optimal_point <- roc_data[which.min(abs(roc_data$threshold - optimal_threshold)), ]
+
 ggplot(roc_data, aes(x = FPR, y = TPR)) +
   geom_line(color = "#e74c3c", size = 1.2) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray") +
+  geom_point(data = optimal_point, aes(x = FPR, y = TPR),
+             color = "#2ecc71", size = 4) +
   annotate("text", x = 0.7, y = 0.3, label = paste0("AUC = ", round(abs(auc), 4)), size = 5) +
+  annotate("text", x = optimal_point$FPR, y = optimal_point$TPR,
+           label = paste0("Optimal\n(t=", round(optimal_threshold, 3), ")"),
+           hjust = -0.2, vjust = -0.5, color = "#2ecc71", size = 3.5) +
   labs(title = "ROC Curve for Logistic Regression Model",
        x = "False Positive Rate (1 - Specificity)",
        y = "True Positive Rate (Sensitivity)") +
   theme_minimal() +
   coord_equal()
+
+cat("\nAUC:", round(abs(auc), 4), "\n")
 ```
 
 ## 9.10 Summary of Logistic Regression Results
@@ -1452,10 +1546,11 @@ if (length(sig_predictors) > 0) {
   cat("  None\n")
 }
 
-cat("\nPREDICTION PERFORMANCE:\n")
+cat("\nPREDICTION PERFORMANCE (at optimal threshold =", round(optimal_threshold, 3), "):\n")
 cat("  Accuracy:", round(accuracy * 100, 2), "%\n")
 cat("  Precision:", round(precision * 100, 2), "%\n")
 cat("  Recall:", round(recall * 100, 2), "%\n")
+cat("  F1 Score:", round(f1_score, 4), "\n")
 cat("  AUC:", round(abs(auc), 4), "\n")
 
 cat("\nHYPOTHESES ABOUT PREDICTORS:\n")
