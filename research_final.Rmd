@@ -3,9 +3,9 @@ title: "Statistical Analysis of Real/Fake Job Postings"
 output: html_document
 ---
 
-# 1. Research Aim
+Part 1. The aim of the research.
 
-The goal of this project is to analyze job postings to identify characteristics that distinguish fraudulent (fake) postings from legitimate ones. This dataset contains approximately 18,000 job descriptions, of which about 800 are fake (phishing or other fraudulent activity).
+The goal of this project is to analyze job postings to identify characteristics that distinguish fraudulent postings from legitimate ones. This dataset contains approximately 18,000 job descriptions, of which about 800 are fake.
 
 **Research Questions:**
 
@@ -22,17 +22,15 @@ The goal of this project is to analyze job postings to identify characteristics 
 4.  Hypothesis Testing (to be completed later)
 5.  Logistic Regression Modeling (to be completed later)
 
-------------------------------------------------------------------------
+Part 2. Overview of data.
 
-# 2. Data Import and Overview
-
-```{r setup, message=FALSE, warning=FALSE}
+```{r}
 library(tidyverse)
 
 data <- read.csv("fake_job_postings.csv")
 ```
 
-## 2.1 Dataset Structure
+Structure:
 
 ```{r}
 cat("Dataset dimensions:", nrow(data), "rows x", ncol(data), "columns\n")
@@ -41,33 +39,31 @@ print(colnames(data))
 ```
 
 ```{r}
-str(data)
+head(data)
 ```
-
-## 2.2 Column Descriptions
 
 The dataset contains the following variables:
 
-| Variable              | Description                               |
-|-----------------------|-------------------------------------------|
-| `job_id`              | Unique identifier for each job posting    |
-| `title`               | Job title                                 |
-| `location`            | Location in format "Country, State, City" |
-| `department`          | Department within the company             |
-| `salary_range`        | Offered salary range (various formats)    |
-| `company_profile`     | Text description of the company           |
-| `description`         | Full job description text                 |
-| `requirements`        | Job requirements                          |
-| `benefits`            | Benefits offered                          |
-| `telecommuting`       | Binary: 1 = remote work allowed           |
-| `has_company_logo`    | Binary: 1 = company logo present          |
-| `has_questions`       | Binary: 1 = screening questions present   |
-| `employment_type`     | Full-time, Part-time, Contract, etc.      |
-| `required_experience` | Experience level required                 |
-| `required_education`  | Education level required                  |
-| `industry`            | Industry category                         |
-| `function`            | Job function/role category                |
-| `fraudulent`          | **Target variable**: 1 = fake, 0 = real   |
+| Variable | Description |
+|------------------------------------|------------------------------------|
+| `job_id` | Unique id of job posting |
+| `title` | Title |
+| `location` | Location in format "Country, State, City" |
+| `department` | Department |
+| `salary_range` | Offered salary range (various formats there is even date format) |
+| `company_profile` | Text description of the company |
+| `description` | Full job description text |
+| `requirements` | Requirements |
+| `benefits` | Benefits |
+| `telecommuting` | Binary: 1 is remote work allowed |
+| `has_company_logo` | Binary: 1 is company logo present |
+| `has_questions` | Binary: 1 is screening questions present |
+| `employment_type` | Full-time, Part-time, Contract, etc. |
+| `required_experience` | Experience level required |
+| `required_education` | Education level required |
+| `industry` | Industry |
+| `function` | Job function/role category |
+| `fraudulent` | **Target variable**: 1 = fake, 0 = real |
 
 ```{r}
 cat("Target variable distribution:\n")
@@ -75,42 +71,33 @@ table(data$fraudulent)
 cat("\nFraudulent rate:", round(mean(data$fraudulent) * 100, 2), "%")
 ```
 
-------------------------------------------------------------------------
+Part 3: Data preprocessing.
 
-# 3. Data Preprocessing
-
-## 3.1 Salary Range Standardization
+1.  Salary range stantardisation.
 
 The salary_range column has inconsistent formats that need standardization:
 
 -   Full format: "20000-28000" (already correct)
 -   Abbreviated: "20-28" (needs conversion to thousands)
 -   Zero values: "0-0" (should be treated as missing)
--   Empty/null values (missing data)
+-   Empty/null values
 
 ```{r}
-# Examine current salary formats
 cat("Sample of salary_range values:\n")
 head(data$salary_range[data$salary_range != ""], 20)
 ```
 
 ```{r}
-# Count non-empty salary entries
 cat("Non-empty salary ranges:", sum(data$salary_range != ""), "\n")
 cat("Empty salary ranges:", sum(data$salary_range == ""), "\n")
 ```
 
 ```{r}
 standardize_salary <- function(salary_str) {
-  # Return NA for empty or null values
   if (is.na(salary_str) || salary_str == "" || salary_str == "0-0") {
     return(c(NA, NA))
   }
-
-  # Remove dollar signs, commas, and whitespace
   clean <- gsub("[$,\\s]", "", salary_str)
-
-  # Extract lower and upper bounds
   parts <- str_split(clean, "-")[[1]]
 
   if (length(parts) != 2) {
@@ -119,32 +106,23 @@ standardize_salary <- function(salary_str) {
 
   lower <- suppressWarnings(as.numeric(parts[1]))
   upper <- suppressWarnings(as.numeric(parts[2]))
-
-  # Handle zero values as NA
   if (!is.na(lower) && lower == 0) lower <- NA
   if (!is.na(upper) && upper == 0) upper <- NA
-
-  # Standardize salary formats:
-  # - If < 250: likely in thousands (e.g., "60-80" means 60k-80k) -> multiply by 1000
-  # - If < 3000: likely monthly salary -> multiply by 12 to get annual
-  # - Otherwise: already annual salary, keep as is
+  # if < 250: multiply by 1000 (anual likely in 1000-s)
+  # if < 3000 multiply by 12 to get annual (likely real monthly salary)
+  # Otherwise: already annual salary, keep as is
   if (!is.na(lower) && !is.na(upper)) {
     if (lower < 250 && upper < 250) {
-      # Thousands format (e.g., 60-80 -> 60000-80000)
       lower <- lower * 1000
       upper <- upper * 1000
     } else if (lower < 3000 && upper < 3000) {
-      # Monthly format -> convert to annual
       lower <- lower * 12
       upper <- upper * 12
     }
-    # Otherwise keep as annual salary
   }
 
   return(c(lower, upper))
 }
-
-# Apply standardization
 salary_standardized <- t(sapply(data$salary_range, standardize_salary))
 data$salary_lower <- salary_standardized[, 1]
 data$salary_upper <- salary_standardized[, 2]
@@ -152,7 +130,6 @@ data$salary_mid <- (data$salary_lower + data$salary_upper) / 2
 ```
 
 ```{r}
-# Verify standardization
 cat("Salary standardization results:\n")
 cat("Valid salary entries:", sum(!is.na(data$salary_mid)), "\n")
 cat("Missing salary entries:", sum(is.na(data$salary_mid)), "\n\n")
@@ -161,33 +138,31 @@ cat("Salary statistics (midpoint):\n")
 summary(data$salary_mid[!is.na(data$salary_mid)])
 ```
 
-## 3.2 Create Derived Variables for Analysis
+2.  Derive variables for analysis.
 
 Based on the hypotheses in the interim report, we need the following variables:
 
 ```{r}
 data <- data %>%
   mutate(
-    # Description length (number of characters)
+    #number of characters
     desc_length = nchar(as.character(description)),
 
-    # Empty company profile indicator
     empty_profile = is.na(company_profile) | company_profile == "",
 
-    # US location indicator (for salary analysis - avoid currency issues)
+    # US location indicator
     is_us = grepl("^US", location),
 
     # California location indicator
     is_california = grepl("^US, CA", location),
 
-    # Entry-level experience indicator (for logistic regression)
+    # entry-level experience indicator
     is_entry_level = required_experience %in% c("Entry level", "Not Applicable", "Internship") |
                      required_experience == "",
 
-    # Has company logo (already binary)
+    # already binary
     has_logo = has_company_logo == 1,
-
-    # Salary category for visualization
+    # for visualization
     salary_category = case_when(
       is.na(salary_mid) ~ "Unknown",
       salary_mid < 20000 ~ "<20k",
@@ -197,7 +172,6 @@ data <- data %>%
       TRUE ~ ">200k"
     ),
 
-    # Description length category
     desc_length_category = case_when(
       desc_length < 1000 ~ "<1000",
       desc_length < 4000 ~ "1000-4000",
@@ -213,7 +187,7 @@ data$desc_length_category <- factor(data$desc_length_category,
                                      levels = c("<1000", "1000-4000", ">4000"))
 ```
 
-## 3.3 Split Data by Fraudulent Status
+3.  Splitting data by fraudulent factor
 
 ```{r}
 fraudulent_data <- data %>% filter(fraudulent == 1)
@@ -225,15 +199,14 @@ n_real <- nrow(real_data)
 cat("Real job postings:", n_real, "\n")
 cat("Fraudulent job postings:", n_fake, "\n")
 cat("Fraud rate:", round(n_fake / nrow(data) * 100, 2), "%\n")
+
 ```
 
-------------------------------------------------------------------------
+**Part 4. EDA**
 
-# 4. Exploratory Data Analysis (EDA)
+Distribution of our target variable
 
-## 4.1 Target Variable Distribution
-
-```{r fig.width=8, fig.height=5}
+```{r}
 ggplot(data, aes(x = factor(fraudulent), fill = factor(fraudulent))) +
   geom_bar() +
   geom_text(stat = "count", aes(label = after_stat(count)), vjust = -0.5) +
@@ -249,12 +222,9 @@ ggplot(data, aes(x = factor(fraudulent), fill = factor(fraudulent))) +
 
 The dataset is highly imbalanced with approximately 95% real postings and 5% fraudulent ones. This class imbalance is important to consider for hypothesis testing and modeling.
 
-## 4.2 Salary Analysis
-
-### 4.2.1 Salary Distribution by Fraud Status
+**Salary distribution by fraud status**
 
 ```{r fig.width=10, fig.height=5}
-# Filter to only US entries with valid salary data (avoid currency issues)
 salary_data <- data %>% filter(!is.na(salary_mid) & is_us)
 
 ggplot(salary_data, aes(x = salary_mid, fill = factor(fraudulent))) +
@@ -270,10 +240,12 @@ ggplot(salary_data, aes(x = salary_mid, fill = factor(fraudulent))) +
   coord_cartesian(xlim = c(0, 300000))
 ```
 
-### 4.2.2 Fraud Probability by Salary Category
+The histogram shows that fraudulent job postings are concentrated in the lowest salary range (0-50,000), as legitimate postings are more evenly distributed across all salary brackets with peaks around 50,000-100,000 and 100,000-200,000. Contrary to the initial hypothesis that scammers lure victims with unrealistically high salaries, the data reveals that most fraudulent postings actually offer lower compensation, likely targeting desperate or inexperienced job seekers. Both distributions are highly right-skewed.
+
+\
+Fraud probability by the salary category. (US only)
 
 ```{r fig.width=10, fig.height=5}
-# Calculate fraud probability by salary category (US only to avoid currency issues)
 salary_fraud_prob <- data %>%
   filter(salary_category != "Unknown" & is_us) %>%
   group_by(salary_category) %>%
@@ -299,14 +271,11 @@ ggplot(salary_fraud_prob, aes(x = salary_category, y = fraud_probability, fill =
   theme(legend.position = "none")
 ```
 
-This visualization shows whether fraudulent postings tend to offer unrealistically high salaries to attract victims.
+This visualization shows whether fraudulent postings tend to offer unrealistically high salaries to attract victims. The fraud probability follows a U-shaped pattern across salary ranges, with the highest fraud rates occurring at the extremes: very low salaries and very high. The middle salary ranges (50k-200k) show the lowest fraud probability, suggesting these represent the "normal" legitimate job market where fraudulent postings are less common. This reveals that scammers use two distinct strategies: targeting desperate job seekers with extremely low-paying positions and luring ambitious candidates with unrealistically high compensation offers.
 
-### 4.2.3 Salary Statistics by Group
+**Salary statistics by group**
 
 ```{r}
-cat("=== Salary Statistics (US Only) ===\n\n")
-
-# Filter for US only to avoid currency issues
 real_data_us <- real_data %>% filter(is_us)
 fraudulent_data_us <- fraudulent_data %>% filter(is_us)
 
@@ -319,11 +288,12 @@ cat("FRAUDULENT postings with salary data:", sum(!is.na(fraudulent_data_us$salar
 cat("Mean salary:", round(mean(fraudulent_data_us$salary_mid, na.rm = TRUE), 2), "\n")
 cat("Median salary:", round(median(fraudulent_data_us$salary_mid, na.rm = TRUE), 2), "\n")
 cat("SD:", round(sd(fraudulent_data_us$salary_mid, na.rm = TRUE), 2), "\n")
+
 ```
 
-## 4.3 Description Length Analysis
+**Description length analysis.**
 
-### 4.3.1 Description Length Distribution
+1.  Discription length distribution
 
 ```{r fig.width=10, fig.height=5}
 ggplot(data, aes(x = desc_length, fill = factor(fraudulent))) +
@@ -338,7 +308,9 @@ ggplot(data, aes(x = desc_length, fill = factor(fraudulent))) +
   coord_cartesian(xlim = c(0, 15000))
 ```
 
-### 4.3.2 Fraud Probability by Description Length
+Both real and fraudulent job postings show highly right-skewed distributions with most descriptions concentrated in the 0-2,500 character range. The overlapping distributions in the lower range indicate that description length alone is not a strong discriminator between real and fraudulent postings, though extremely short descriptions appear more suspicious.
+
+2.  Fraud probability be the length of the description.
 
 ```{r fig.width=10, fig.height=5}
 desc_fraud_prob <- data %>%
@@ -364,11 +336,11 @@ ggplot(desc_fraud_prob, aes(x = desc_length_category, y = fraud_probability, fil
   theme(legend.position = "none")
 ```
 
-### 4.3.3 Description Length Statistics
+The fraud probability shows a clear pattern where shorter job descriptions have a 5.9% fraud rate while very long descriptions (\>4000 characters) have the highest fraud rate at 7.8%, and medium-length descriptions (1000-4000 characters) have the lowest fraud rate at 3.7%. This suggests that both extremely brief and excessively lengthy job descriptions should raise suspicion, with the "sweet spot" for legitimate postings falling in the moderate length range that reflects typical professional job posting standards. The pattern indicates scammers either do minimal effort (short texts) or overcompensate with long descriptions to appear legitimate, while genuine employers typically provide appropriately detailed descriptions in the middle range.
+
+3.  Description length
 
 ```{r}
-cat("=== Description Length Statistics ===\n\n")
-
 cat("REAL postings:\n")
 cat("Mean length:", round(mean(real_data$desc_length, na.rm = TRUE), 2), "characters\n")
 cat("Median length:", round(median(real_data$desc_length, na.rm = TRUE), 2), "characters\n")
@@ -380,9 +352,9 @@ cat("Median length:", round(median(fraudulent_data$desc_length, na.rm = TRUE), 2
 cat("SD:", round(sd(fraudulent_data$desc_length, na.rm = TRUE), 2), "\n")
 ```
 
-## 4.4 Company Profile Analysis
+**Company profile analysis**
 
-### 4.4.1 Missing Company Profile by Fraud Status
+Missing company profile by fraud status
 
 ```{r fig.width=10, fig.height=5}
 profile_data <- data %>%
@@ -402,11 +374,11 @@ ggplot(profile_data, aes(x = missing_profile, y = count, fill = factor(fraudulen
   theme_minimal()
 ```
 
-### 4.4.2 Empty Profile Statistics
+The visualization dramatically shows that missing company profiles are a strong indicator of fraud, with 587 fraudulent postings out of 3,308 total postings with missing profiles compared to only 279 fraudulent postings out of 14,572 postings with profiles present. Postings with missing company descriptions are approximately 9 times more likely to be fraudulent than those with complete profiles, making this one of the most powerful predictors of fraud in the dataset.
+
+Empty profile statistics.
 
 ```{r}
-cat("=== Empty Company Profile Statistics ===\n\n")
-
 cat("REAL postings:\n")
 cat("With empty profile:", sum(real_data$empty_profile), "/", n_real,
     "=", round(mean(real_data$empty_profile) * 100, 2), "%\n\n")
@@ -416,9 +388,9 @@ cat("With empty profile:", sum(fraudulent_data$empty_profile), "/", n_fake,
     "=", round(mean(fraudulent_data$empty_profile) * 100, 2), "%\n")
 ```
 
-## 4.5 Location Analysis (California Focus)
+**Location analysis (specifically California)**
 
-### 4.5.1 Fraud Rate by Location
+Fraud rate by the location
 
 ```{r fig.width=10, fig.height=5}
 location_data <- data %>%
@@ -444,10 +416,9 @@ ggplot(location_data, aes(x = location_type, y = fraud_rate, fill = location_typ
   theme(legend.position = "none")
 ```
 
-### 4.5.2 Top Countries by Posting Count
+Top countries by posting count
 
 ```{r fig.width=10, fig.height=6}
-# Extract country from location
 data$country <- sapply(strsplit(as.character(data$location), ","), function(x) trimws(x[1]))
 
 country_stats <- data %>%
@@ -458,7 +429,7 @@ country_stats <- data %>%
     fraud_rate = mean(fraudulent),
     .groups = "drop"
   ) %>%
-  filter(total >= 50) %>%  # Only countries with at least 50 postings
+  filter(total >= 50) %>%  # countries with at least 50 postings
   arrange(desc(total)) %>%
   head(15)
 
@@ -475,7 +446,9 @@ ggplot(country_stats, aes(x = reorder(country, total), y = total, fill = fraud_r
   theme_minimal()
 ```
 
-## 4.6 Employment Type Analysis
+We can not assert that this means something as clearly the data was collected mostly and US.
+
+**Employment type analysis**
 
 ```{r fig.width=10, fig.height=5}
 emp_type_stats <- data %>%
@@ -502,7 +475,9 @@ ggplot(emp_type_stats, aes(x = reorder(employment_type, -fraud_rate), y = fraud_
         axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-## 4.7 Required Experience Analysis
+Part-time positions show the highest fraud rate at 9.3%, more than double the rate of full-time positions and over three times higher than contract positions, suggesting scammers preferentially target job seekers looking for flexible or supplemental income opportunities. The "Other" category has a 6.6% fraud rate, while temporary positions show the lowest fraud rate at just 0.8%, indicating that more formal, structured employment arrangements are less susceptible to postings. This pattern suggests that fraudsters exploit the less regulated part-time work to attract vulnerable job seekers.
+
+**Required experience analysis**
 
 ```{r fig.width=10, fig.height=5}
 exp_stats <- data %>%
@@ -530,10 +505,11 @@ ggplot(exp_stats, aes(x = reorder(required_experience, -fraud_rate), y = fraud_r
         axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
-## 4.8 Binary Features Analysis
+The data clearly confirms that scammers target inexperienced candidates experienced roles like Associate (1.8%), Internship (2.6%), and Mid-Senior level (3%) positions have significantly lower fraud rates. The inverse relationship between required experience and fraud probability suggests that scammers exploit both desperate job seekers with no experience requirements and ambitious candidates seeking executive positions. This pattern indicates that positions requiring minimal qualifications or offering unrealistic senior roles are red flags, as legitimate employers recruiting for experienced professionals tend to implement more thorough screening procedures that deter fraudulent postings.
+
+**Binary feature analysis**
 
 ```{r fig.width=12, fig.height=5}
-# Analyze binary features: telecommuting, has_company_logo, has_questions
 binary_features <- data %>%
   summarise(
     telecommuting_fraud_rate_0 = mean(fraudulent[telecommuting == 0]),
@@ -566,45 +542,66 @@ ggplot(binary_df, aes(x = Feature, y = FraudRate, fill = Value)) +
   theme_minimal()
 ```
 
-Postings WITHOUT company logos and WITHOUT screening questions have significantly higher fraud rates.
+Postings WITHOUT company logos and WITHOUT screening questions have significantly higher fraud rates. The absence of professional credibility markers dramatically increases fraud risk, with postings lacking company logos showing a 15.9% fraud rate compared to just 2.0% for those with logos, and postings without screening questions showing 6.8% fraud versus 2.8% with questions. Interestingly, telecommuting positions show a reversed pattern where remote work opportunities (Yes=8.3%) have higher fraud rates than non-remote positions (No=4.7%), suggesting scammers exploit the appeal and reduced verification requirements of work from home arrangements.
 
-------------------------------------------------------------------------
+**Summary of EDA:**
 
-# 5. Summary of EDA Findings
+1.  Dataset is really imbalanced (\~95% real, \~5% fake).
+2.  Salary (in US only to avoid converting currency) Real postings mean salary:
 
 ```{r}
-cat("=== KEY FINDINGS FROM EDA ===\n\n")
+round(mean(real_data_us$salary_mid, na.rm = TRUE), 0)
 
-cat("1. CLASS IMBALANCE:\n")
-cat("   - Dataset is highly imbalanced (~95% real, ~5% fake)\n\n")
-
-cat("2. SALARY PATTERNS (US only to avoid currency issues):\n")
-cat("   - Real postings mean salary:", round(mean(real_data_us$salary_mid, na.rm = TRUE), 0), "\n")
-cat("   - Fake postings mean salary:", round(mean(fraudulent_data_us$salary_mid, na.rm = TRUE), 0), "\n")
-cat("   - Very high salaries (>200k) show elevated fraud rates\n\n")
-
-cat("3. DESCRIPTION LENGTH:\n")
-cat("   - Real postings mean length:", round(mean(real_data$desc_length), 0), "chars\n")
-cat("   - Fake postings mean length:", round(mean(fraudulent_data$desc_length), 0), "chars\n\n")
-
-cat("4. COMPANY PROFILE:\n")
-cat("   - Real postings missing profile:", round(mean(real_data$empty_profile) * 100, 1), "%\n")
-cat("   - Fake postings missing profile:", round(mean(fraudulent_data$empty_profile) * 100, 1), "%\n\n")
-
-cat("5. BINARY FEATURES:\n")
-cat("   - Postings without company logo have higher fraud rate\n")
-cat("   - Postings without screening questions have higher fraud rate\n")
 ```
 
-------------------------------------------------------------------------
+While fake postings mean salary:
 
-# 6. Data Prepared for Hypothesis Testing
+```{r}
+round(mean(fraudulent_data_us$salary_mid, na.rm = TRUE), 0)
+```
+
+We can see that mean of fraudulent salaries is much higher than real ones.
+
+3.  Description length\
+    Real postings mean length:
+
+```{r}
+round(mean(real_data$desc_length), 0)
+```
+
+Fake postings mean length:
+
+```{r}
+round(mean(fraudulent_data$desc_length), 0)
+```
+
+Here we can't see big difference.
+
+4.  Company profile.\
+    Real postings missing profile:
+
+    ```{r}
+    round(mean(real_data$empty_profile) * 100, 1)
+    ```
+
+    Fake postings missing profile:
+
+    ```{r}
+    round(mean(fraudulent_data$empty_profile) * 100, 1)
+    ```
+
+    We can clearly see that there are much more missing profiles in fraudulent posting.
+
+5.  Binary features we can see from visualizations that:
+
+    Postings without company logo have higher fraud rate\
+    Postings without screening questions have higher fraud rate
+
+**Data prepared for Hypothesis testing.**
 
 The following variables are now ready for hypothesis testing:
 
 ```{r}
-# Extract variables needed for hypothesis testing
-# For salary: only use US postings to avoid currency issues
 salary_fraud <- fraudulent_data %>% filter(!is.na(salary_mid) & is_us) %>% pull(salary_mid)
 salary_real <- real_data %>% filter(!is.na(salary_mid) & is_us) %>% pull(salary_mid)
 
@@ -617,7 +614,6 @@ real_profiles <- real_data %>% pull(empty_profile)
 california_posts <- data %>% filter(is_california == TRUE)
 other_posts <- data %>% filter(is_california == FALSE)
 
-cat("Variables ready for hypothesis testing:\n")
 cat("- salary_fraud:", length(salary_fraud), "observations\n")
 cat("- salary_real:", length(salary_real), "observations\n")
 cat("- fraud_desc:", length(fraud_desc), "observations\n")
@@ -629,13 +625,11 @@ n_salary_fraud <- length(salary_fraud)
 n_salary_real <- length(salary_real)
 ```
 
-------------------------------------------------------------------------
+# Hypothesis Testing
 
-# 7. Hypothesis Testing
+Hypothesis 1. Mean Salary comparision (only in US)
 
-## 7.1 Hypothesis 1: Mean Salary Comparison (US Only)
-
-**Research Question:** Do fraudulent job postings offer different salary ranges compared to real ones? (Analyzing US postings only to avoid currency issues.)
+Research Question: Do fraudulent job postings offer different salary ranges compared to real ones? (Analyzing US postings only to avoid currency issues.)
 
 We test:
 
@@ -663,27 +657,25 @@ T \sim t_{n_F + n_R - 2}
 $$
 
 ```{r}
-# Calculate sample statistics
 x_bar_F <- mean(salary_fraud)
 x_bar_R <- mean(salary_real)
 
 s2_F <- var(salary_fraud)
 s2_R <- var(salary_real)
 
-# Pooled variance
+#variance
 s2_p <- ((n_salary_fraud - 1) * s2_F + (n_salary_real - 1) * s2_R) / (n_salary_fraud + n_salary_real - 2)
 s_p <- sqrt(s2_p)
 
 # T-statistic
 T_stat <- (x_bar_F - x_bar_R) / (s_p * sqrt(1/n_salary_fraud + 1/n_salary_real))
 
-# Degrees of freedom
+# df
 df_t <- n_salary_fraud + n_salary_real - 2
 
 # Two-sided p-value
 p_value <- 2 * pt(-abs(T_stat), df = df_t)
 
-cat("=== Hypothesis 1: Two-Sample T-Test for Salary ===\n\n")
 cat("Sample sizes:\n")
 cat("  Fraudulent (n_F):", n_salary_fraud, "\n")
 cat("  Real (n_R):", n_salary_real, "\n\n")
@@ -702,15 +694,16 @@ cat("Degrees of freedom:", df_t, "\n")
 cat("P-value:", format(p_value, scientific = TRUE, digits = 4), "\n")
 ```
 
+Let\`s now verify with built in test:
+
 ```{r}
-# Verify with built-in t.test function
 t.test(salary_fraud, salary_real, var.equal = TRUE)
 ```
 
+Decision
+
 ```{r}
-# Decision
 alpha <- 0.05
-cat("=== Decision (alpha =", alpha, ") ===\n\n")
 if (p_value < alpha) {
   cat("Reject H0: Mean salary of fraudulent postings significantly differs from mean salary of real postings.\n")
 } else {
@@ -718,9 +711,7 @@ if (p_value < alpha) {
 }
 ```
 
-------------------------------------------------------------------------
-
-## 7.2 Hypothesis 2: Description Length Comparison
+Hypothesis 2. Description length comparision
 
 **Research Question:** Is there a difference in description length between fake and real job postings?
 
@@ -742,35 +733,34 @@ $$
 \text{Reject } H_0 \text{ if } T > t_{\alpha, n_F+n_R-2} \quad (\text{for } H_1: \mu_F > \mu_R)
 $$ $$
 \text{Reject } H_0 \text{ if } T < -t_{\alpha, n_F+n_R-2} \quad (\text{for } H_1: \mu_F < \mu_R)
-$$
+$$\
+Calculate sample statistics for description length
 
 ```{r}
-# Calculate sample statistics for description length
 mean_fraud_desc <- mean(fraud_desc, na.rm = TRUE)
 mean_real_desc <- mean(real_desc, na.rm = TRUE)
 
 var_fraud_desc <- var(fraud_desc, na.rm = TRUE)
 var_real_desc <- var(real_desc, na.rm = TRUE)
 
-# Pooled variance
+# variance
 pooled_var_desc <- ((n_fake - 1) * var_fraud_desc + (n_real - 1) * var_real_desc) / (n_fake + n_real - 2)
 pooled_sd_desc <- sqrt(pooled_var_desc)
 
 # T-statistic
 T_desc <- (mean_fraud_desc - mean_real_desc) / (pooled_sd_desc * sqrt(1/n_fake + 1/n_real))
 
-# Degrees of freedom
+# df
 df_desc <- n_fake + n_real - 2
 
 # Critical value for one-sided test
 alpha_desc <- 0.05
 t_crit_desc <- qt(1 - alpha_desc, df = df_desc)
 
-# P-values for one-sided tests
+# p-values for one-sided tests
 p_greater_desc <- 1 - pt(T_desc, df = df_desc)  # H1: mu_F > mu_R
 p_less_desc <- pt(T_desc, df = df_desc)          # H1: mu_F < mu_R
 
-cat("=== Hypothesis 2: One-Sided T-Tests for Description Length ===\n\n")
 cat("Sample sizes:\n")
 cat("  Fraudulent (n_F):", n_fake, "\n")
 cat("  Real (n_R):", n_real, "\n\n")
@@ -784,18 +774,18 @@ cat("T-statistic:", round(T_desc, 4), "\n")
 cat("Degrees of freedom:", df_desc, "\n")
 cat("Critical value (one-sided, alpha=0.05):", round(t_crit_desc, 4), "\n\n")
 
-cat("--- Test 2a: H1: mu_F > mu_R (fraudulent longer) ---\n")
+cat("Test 2a: H1: mu_F > mu_R (fraudulent longer)\n")
 cat("P-value:", format(p_greater_desc, scientific = TRUE, digits = 4), "\n")
 cat("Reject H0:", T_desc > t_crit_desc, "\n\n")
 
-cat("--- Test 2b: H1: mu_F < mu_R (fraudulent shorter) ---\n")
+cat("Test 2b: H1: mu_F < mu_R (fraudulent shorter)\n")
 cat("P-value:", format(p_less_desc, scientific = TRUE, digits = 4), "\n")
 cat("Reject H0:", T_desc < -t_crit_desc, "\n")
 ```
 
+verify with built-in function
+
 ```{r}
-# Verify with built-in t.test function
-cat("=== Verification with t.test() ===\n\n")
 cat("Test 2a (alternative: greater):\n")
 t.test(fraud_desc, real_desc, var.equal = TRUE, alternative = "greater")
 ```
@@ -805,9 +795,10 @@ cat("Test 2b (alternative: less):\n")
 t.test(fraud_desc, real_desc, var.equal = TRUE, alternative = "less")
 ```
 
+Decision with alpha 0,05:
+
 ```{r}
-# Decision
-cat("=== Decision (alpha = 0.05) ===\n\n")
+
 if (T_desc > t_crit_desc) {
   cat("Test 2a: Reject H0 - Fraudulent postings have significantly LONGER descriptions.\n")
 } else if (T_desc < -t_crit_desc) {
@@ -817,9 +808,7 @@ if (T_desc > t_crit_desc) {
 }
 ```
 
-------------------------------------------------------------------------
-
-## 7.3 Hypothesis 3: Empty Company Profile Proportion
+hypothesis 3. empty company profile proportion
 
 **Research Question:** Are fraudulent postings more likely to have missing company profiles?
 
@@ -850,15 +839,14 @@ Z \sim N(0, 1)
 $$
 
 ```{r}
-# Count empty profiles in each group
+# empty profiles in each group
 x_real_prof <- sum(real_profiles)
 x_fraud_prof <- sum(fraud_profiles)
 
-# Sample proportions
 p_hat_real_prof <- x_real_prof / n_real
 p_hat_fraud_prof <- x_fraud_prof / n_fake
 
-# Pooled proportion
+# proportion
 p_pooled_prof <- (x_real_prof + x_fraud_prof) / (n_real + n_fake)
 
 # Z-statistic
@@ -868,12 +856,11 @@ Z_prof <- (p_hat_real_prof - p_hat_fraud_prof) / sqrt(p_pooled_prof * (1 - p_poo
 alpha_prof <- 0.05
 z_crit_prof <- qnorm(1 - alpha_prof)
 
-# P-values for one-sided tests
+# p-values for one-sided tests
 p_val_greater_prof <- 1 - pnorm(Z_prof)  # H1: p_R > p_F
 p_val_less_prof <- pnorm(Z_prof)          # H1: p_R < p_F
 
-cat("=== Hypothesis 3: Two-Sample Z-Test for Proportions ===\n\n")
-cat("Empty profiles count:\n")
+cat("Empty profiles :\n")
 cat("  Real:", x_real_prof, "/", n_real, "=", round(p_hat_real_prof * 100, 2), "%\n")
 cat("  Fraudulent:", x_fraud_prof, "/", n_fake, "=", round(p_hat_fraud_prof * 100, 2), "%\n\n")
 
@@ -881,18 +868,18 @@ cat("Pooled proportion:", round(p_pooled_prof, 4), "\n")
 cat("Z-statistic:", round(Z_prof, 4), "\n")
 cat("Critical value (one-sided, alpha=0.05):", round(z_crit_prof, 4), "\n\n")
 
-cat("--- Test 3a: H1: p_R > p_F (real have more empty profiles) ---\n")
+cat("Test 3a: H1: p_R > p_F (real have more empty profiles)\n")
 cat("P-value:", format(p_val_greater_prof, scientific = TRUE, digits = 4), "\n")
 cat("Reject H0:", Z_prof > z_crit_prof, "\n\n")
 
-cat("--- Test 3b: H1: p_R < p_F (fraudulent have more empty profiles) ---\n")
+cat("Test 3b: H1: p_R < p_F (fraudulent have more empty profiles)\n")
 cat("P-value:", format(p_val_less_prof, scientific = TRUE, digits = 4), "\n")
 cat("Reject H0:", Z_prof < -z_crit_prof, "\n")
 ```
 
+Verify with built-in prop.test function
+
 ```{r}
-# Verify with built-in prop.test function
-cat("=== Verification with prop.test() ===\n\n")
 cat("Test 3a (alternative: greater):\n")
 prop.test(x = c(x_real_prof, x_fraud_prof), n = c(n_real, n_fake), alternative = "greater", correct = FALSE)
 ```
@@ -902,9 +889,9 @@ cat("Test 3b (alternative: less):\n")
 prop.test(x = c(x_real_prof, x_fraud_prof), n = c(n_real, n_fake), alternative = "less", correct = FALSE)
 ```
 
+Decision with a = 0,05
+
 ```{r}
-# Decision
-cat("=== Decision (alpha = 0.05) ===\n\n")
 if (Z_prof > z_crit_prof) {
   cat("Test 3a: Reject H0 - Real postings have significantly MORE empty profiles.\n")
 } else if (Z_prof < -z_crit_prof) {
@@ -914,9 +901,7 @@ if (Z_prof > z_crit_prof) {
 }
 ```
 
-------------------------------------------------------------------------
-
-## 7.4 Hypothesis 4: California Location and Fraud Rate
+Hypothesis 4. California Location and Fraud Rate.
 
 **Research Question:** Does the probability that a job posting is fraudulent change when the posting is located in California?
 
@@ -935,14 +920,14 @@ $$
 $$
 
 ```{r}
-# Count fraudulent postings by location
+# fraudulent postings by location
 n_california <- nrow(california_posts)
 n_other <- nrow(other_posts)
 
 x_fraud_cal <- sum(california_posts$fraudulent == 1)
 x_fraud_other <- sum(other_posts$fraudulent == 1)
 
-# Sample proportions (fraud rates)
+# fraud rates
 p_hat_cal <- x_fraud_cal / n_california
 p_hat_other <- x_fraud_other / n_other
 
@@ -956,10 +941,9 @@ Z_loc <- (p_hat_cal - p_hat_other) / sqrt(p_pooled_loc * (1 - p_pooled_loc) * (1
 alpha_loc <- 0.05
 z_crit_loc <- qnorm(1 - alpha_loc)
 
-# P-value for one-sided test (H1: p_CA > p_Other)
+# p-value for one-sided test (H1: p_CA > p_Other)
 p_val_loc <- 1 - pnorm(Z_loc)
 
-cat("=== Hypothesis 4: Z-Test for California Fraud Rate ===\n\n")
 cat("Sample sizes:\n")
 cat("  California postings:", n_california, "\n")
 cat("  Other locations:", n_other, "\n\n")
@@ -974,15 +958,16 @@ cat("Critical value (one-sided, alpha=0.05):", round(z_crit_loc, 4), "\n")
 cat("P-value:", format(p_val_loc, scientific = TRUE, digits = 4), "\n")
 ```
 
+Verify with built-in prop.test function
+
 ```{r}
-# Verify with built-in prop.test function
-cat("=== Verification with prop.test() ===\n")
+
 prop.test(x = c(x_fraud_cal, x_fraud_other), n = c(n_california, n_other), alternative = "greater", correct = FALSE)
 ```
 
+Decision with a = 0,05:
+
 ```{r}
-# Decision
-cat("=== Decision (alpha = 0.05) ===\n\n")
 if (Z_loc > z_crit_loc) {
   cat("Reject H0: California postings have significantly HIGHER fraud rate than other locations.\n")
 } else {
@@ -990,45 +975,21 @@ if (Z_loc > z_crit_loc) {
 }
 ```
 
-------------------------------------------------------------------------
+**Summary of hypotheses testing:**
 
-# 8. Summary of Hypothesis Testing Results
+Hypothesis 1: Mean Salary Comparison (Two-sided t-test): Failed to Reject $H_0$
 
-```{r}
-cat("=== SUMMARY OF ALL HYPOTHESIS TESTS ===\n\n")
+Hypothesis 2: Description Length (One-sided t-tests): Reject $H_0$
 
-cat("HYPOTHESIS 1: Mean Salary Comparison (Two-sided t-test)\n")
-cat("  H0: mu_F = mu_R vs H1: mu_F != mu_R\n")
-cat("  T-statistic:", round(T_stat, 4), ", p-value:", format(p_value, scientific = TRUE, digits = 4), "\n")
-cat("  Result:", ifelse(p_value < 0.05, "REJECT H0", "FAIL TO REJECT H0"), "\n\n")
+Hypothesis 3: Empty Company Profile Proportion (Z-tests): Reject $H_0$
 
-cat("HYPOTHESIS 2: Description Length (One-sided t-tests)\n")
-cat("  T-statistic:", round(T_desc, 4), "\n")
-cat("  2a) H1: mu_F > mu_R, p-value:", format(p_greater_desc, scientific = TRUE, digits = 4),
-    ", Result:", ifelse(T_desc > t_crit_desc, "REJECT H0", "FAIL TO REJECT H0"), "\n")
-cat("  2b) H1: mu_F < mu_R, p-value:", format(p_less_desc, scientific = TRUE, digits = 4),
-    ", Result:", ifelse(T_desc < -t_crit_desc, "REJECT H0", "FAIL TO REJECT H0"), "\n\n")
+Hypothesis 4: California Fraud Rate (One-sided Z-test): Reject $H_0$
 
-cat("HYPOTHESIS 3: Empty Company Profile Proportion (Z-tests)\n")
-cat("  Z-statistic:", round(Z_prof, 4), "\n")
-cat("  3a) H1: p_R > p_F, p-value:", format(p_val_greater_prof, scientific = TRUE, digits = 4),
-    ", Result:", ifelse(Z_prof > z_crit_prof, "REJECT H0", "FAIL TO REJECT H0"), "\n")
-cat("  3b) H1: p_R < p_F, p-value:", format(p_val_less_prof, scientific = TRUE, digits = 4),
-    ", Result:", ifelse(Z_prof < -z_crit_prof, "REJECT H0", "FAIL TO REJECT H0"), "\n\n")
-
-cat("HYPOTHESIS 4: California Fraud Rate (One-sided Z-test)\n")
-cat("  H0: p_CA = p_Other vs H1: p_CA > p_Other\n")
-cat("  Z-statistic:", round(Z_loc, 4), ", p-value:", format(p_val_loc, scientific = TRUE, digits = 4), "\n")
-cat("  Result:", ifelse(Z_loc > z_crit_loc, "REJECT H0", "FAIL TO REJECT H0"), "\n")
-```
-
-------------------------------------------------------------------------
-
-# 9. Logistic Regression
+# Logistic Regression
 
 In the previous sections we compared means and proportions between real and fraudulent postings using classical parametric tests. We now move to a binary classifier - logistic regression, which allows us to model the probability that a posting is fraudulent as a function of several predictors simultaneously.
 
-## 9.1 Model Specification
+**Model specification:**
 
 Let:
 
@@ -1040,7 +1001,7 @@ The logistic regression model assumes that: $$
 Y_i | X_i \sim \text{Bernoulli}(\pi_i)
 $$
 
-and the log-odds (logit) of fraud are a linear function of the predictors: $$
+and the log-odd of fraud are a linear function of the predictors: $$
 \log \frac{\pi_i}{1 - \pi_i} = \eta_i = \beta_0 + \beta_1 x_{i1} + \cdots + \beta_p x_{ip}
 $$
 
@@ -1064,68 +1025,27 @@ $$
 
 There is no closed-form solution for $\hat{\beta}$, so numerical optimization (e.g., iteratively reweighted least squares) is used to obtain the maximum likelihood estimator (MLE) $\hat{\beta}$ and its estimated covariance matrix $\widehat{\text{Var}}(\hat{\beta})$.
 
-## 9.3 Wald Tests for Individual Coefficients
+-   **Likelihood Ratio Tests for Individual Coefficients**
 
-For each predictor $x_{ij}$, we can test whether it has a statistically significant effect on fraud probability.
-
-**Two-sided test** (no prior about the sign). For coefficient $\beta_j$: $$
-H_0: \beta_j = 0 \quad \text{vs.} \quad H_1: \beta_j \neq 0
 $$
-
-Let $\hat{\beta}_j$ be the estimate and $\widehat{\text{se}}(\hat{\beta}_j)$ its standard error. The Wald statistic is: $$
-Z_j = \frac{\hat{\beta}_j}{\widehat{\text{se}}(\hat{\beta}_j)}
-$$
-
-Under $H_0$ and for large $n$: $$
-Z_j \approx N(0, 1)
-$$
-
-Decision rule at significance level $\alpha$: $$
-\text{Reject } H_0 \text{ if } |Z_j| > z_{1-\alpha/2}
-$$
-
-**One-sided test** (directional hypotheses). If we have prior expectations about the sign of $\beta_j$: $$
-H_0: \beta_j = 0, \quad H_1: \beta_j > 0 \quad \text{(predictor increases odds of fraud)}
-$$ or $$
-H_0: \beta_j = 0, \quad H_1: \beta_j < 0 \quad \text{(predictor decreases odds of fraud)}
-$$
-
-The rejection regions are: $$
-\text{Reject } H_0 \text{ if } Z_j > z_{1-\alpha} \quad \text{for } H_1: \beta_j > 0
-$$ $$
 \text{Reject } H_0 \text{ if } Z_j < -z_{1-\alpha} \quad \text{for } H_1: \beta_j < 0
 $$
 
 ## 9.4 Prepare Data for Logistic Regression
 
 ```{r}
-# Create a clean dataset for logistic regression (US only to avoid currency issues)
 model_data <- data %>%
   filter(is_us) %>%
   mutate(
-    # Standardize salary (use midpoint, fill NA with median from US data)
+    # standardize salary
     salary_standardized = ifelse(is.na(salary_mid), median(salary_mid, na.rm = TRUE), salary_mid),
     salary_standardized = scale(salary_standardized)[,1],
-
-    # Standardize description length
     desc_length_standardized = scale(desc_length)[,1],
-
-    # Binary: missing company profile
     missing_profile = as.integer(empty_profile),
-
-    # Binary: entry-level or no experience required
     entry_level = as.integer(required_experience %in% c("Entry level", "Not Applicable", "Internship", "")),
-
-    # Binary: has company logo
     has_logo = has_company_logo,
-
-    # Binary: has screening questions
     has_questions = has_questions,
-
-    # Binary: telecommuting allowed
     telecommuting = telecommuting,
-
-    # Binary: California location
     california = as.integer(is_california)
   ) %>%
   select(fraudulent, salary_standardized, desc_length_standardized, missing_profile,
@@ -1140,48 +1060,39 @@ str(model_data)
 ## 9.5 Fit Logistic Regression Model
 
 ```{r}
-# Fit logistic regression model
 logit_model <- glm(fraudulent ~ salary_standardized + desc_length_standardized +
                      missing_profile + entry_level + has_logo + has_questions +
                      telecommuting + california,
                    data = model_data,
                    family = binomial(link = "logit"))
 
-cat("=== Logistic Regression Model Summary ===\n\n")
 summary(logit_model)
 ```
 
 ## 9.6 Interpretation of Coefficients
 
 ```{r}
-# Extract coefficients, standard errors, z-values, and p-values
 coef_table <- summary(logit_model)$coefficients
 coef_df <- as.data.frame(coef_table)
 colnames(coef_df) <- c("Estimate", "Std.Error", "z.value", "p.value")
-
-# Add odds ratios
 coef_df$OddsRatio <- exp(coef_df$Estimate)
 
-# Add confidence intervals for odds ratios
 conf_int <- confint.default(logit_model)
 coef_df$OR_CI_Lower <- exp(conf_int[,1])
 coef_df$OR_CI_Upper <- exp(conf_int[,2])
-
-# Add significance indicators
 coef_df$Significant <- ifelse(coef_df$p.value < 0.001, "***",
                         ifelse(coef_df$p.value < 0.01, "**",
                         ifelse(coef_df$p.value < 0.05, "*",
                         ifelse(coef_df$p.value < 0.1, ".", ""))))
 
-cat("=== Coefficient Interpretation ===\n\n")
-# Print numeric columns rounded, keep Significant as is
 coef_df_print <- coef_df
 coef_df_print[, 1:7] <- round(coef_df_print[, 1:7], 4)
 print(coef_df_print)
 ```
 
+Odd ratios with95% CI
+
 ```{r}
-cat("\n=== Odds Ratios with 95% Confidence Intervals ===\n\n")
 cat("Signif. codes: '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1\n\n")
 
 for (i in 1:nrow(coef_df)) {
@@ -1235,13 +1146,11 @@ H_0: \beta_{prof} = 0 \quad \text{vs.} \quad H_1: \beta_{prof} > 0
 $$
 
 ```{r}
-# One-sided test for missing profile coefficient
 beta_prof <- coef(logit_model)["missing_profile"]
 se_prof <- summary(logit_model)$coefficients["missing_profile", "Std. Error"]
 z_prof_logit <- beta_prof / se_prof
 p_prof_greater <- 1 - pnorm(z_prof_logit)
 
-cat("=== Hypothesis: Missing profile increases fraud odds ===\n")
 cat("H0: beta_prof = 0 vs H1: beta_prof > 0\n\n")
 cat("Coefficient:", round(beta_prof, 4), "\n")
 cat("Std. Error:", round(se_prof, 4), "\n")
@@ -1265,13 +1174,11 @@ H_0: \beta_{len} = 0 \quad \text{vs.} \quad H_1: \beta_{len} < 0
 $$
 
 ```{r}
-# One-sided test for description length coefficient
 beta_len <- coef(logit_model)["desc_length_standardized"]
 se_len <- summary(logit_model)$coefficients["desc_length_standardized", "Std. Error"]
 z_len <- beta_len / se_len
 p_len_less <- pnorm(z_len)
 
-cat("=== Hypothesis: Longer description decreases fraud odds ===\n")
 cat("H0: beta_len = 0 vs H1: beta_len < 0\n\n")
 cat("Coefficient:", round(beta_len, 4), "\n")
 cat("Std. Error:", round(se_len, 4), "\n")
@@ -1295,13 +1202,11 @@ H_0: \beta_{entry} = 0 \quad \text{vs.} \quad H_1: \beta_{entry} > 0
 $$
 
 ```{r}
-# One-sided test for entry-level coefficient
 beta_entry <- coef(logit_model)["entry_level"]
 se_entry <- summary(logit_model)$coefficients["entry_level", "Std. Error"]
 z_entry <- beta_entry / se_entry
 p_entry_greater <- 1 - pnorm(z_entry)
 
-cat("=== Hypothesis: Entry-level jobs have higher fraud odds ===\n")
 cat("H0: beta_entry = 0 vs H1: beta_entry > 0\n\n")
 cat("Coefficient:", round(beta_entry, 4), "\n")
 cat("Std. Error:", round(se_entry, 4), "\n")
@@ -1319,33 +1224,24 @@ if (p_entry_greater < 0.05) {
 ## 9.8 Model Diagnostics
 
 ```{r}
-# Model fit statistics
-cat("=== Model Fit Statistics ===\n\n")
-
-# Log-likelihood
 cat("Log-Likelihood:", round(logLik(logit_model)[1], 2), "\n")
 
-# AIC and BIC
 cat("AIC:", round(AIC(logit_model), 2), "\n")
 cat("BIC:", round(BIC(logit_model), 2), "\n\n")
 
-# Deviance
 cat("Null Deviance:", round(logit_model$null.deviance, 2), "on", logit_model$df.null, "df\n")
 cat("Residual Deviance:", round(logit_model$deviance, 2), "on", logit_model$df.residual, "df\n\n")
 
-# McFadden's R-squared
 null_model <- glm(fraudulent ~ 1, data = model_data, family = binomial)
 mcfadden_r2 <- 1 - (logLik(logit_model)[1] / logLik(null_model)[1])
 cat("McFadden's R-squared:", round(mcfadden_r2, 4), "\n")
 ```
 
 ```{r}
-# Likelihood Ratio Test (overall model significance)
 lr_stat <- logit_model$null.deviance - logit_model$deviance
 lr_df <- logit_model$df.null - logit_model$df.residual
 lr_pvalue <- 1 - pchisq(lr_stat, df = lr_df)
 
-cat("\n=== Likelihood Ratio Test ===\n")
 cat("H0: All coefficients = 0 (null model)\n")
 cat("H1: At least one coefficient != 0\n\n")
 cat("LR Statistic:", round(lr_stat, 2), "\n")
@@ -1364,7 +1260,6 @@ if (lr_pvalue < 0.05) {
 ### 9.9.1 Find Optimal Threshold
 
 ```{r}
-# Predicted probabilities
 model_data$predicted_prob <- predict(logit_model, type = "response")
 
 # Find optimal threshold by maximizing F1 score
@@ -1383,17 +1278,14 @@ f1_scores <- sapply(thresholds, function(t) {
   return(f1)
 })
 
-# Select optimal threshold
 optimal_threshold <- thresholds[which.max(f1_scores)]
 max_f1 <- max(f1_scores)
 
-cat("=== Optimal Threshold Selection ===\n\n")
 cat("Optimal threshold (maximizing F1):", round(optimal_threshold, 3), "\n")
 cat("F1 score at optimal threshold:", round(max_f1, 4), "\n\n")
 ```
 
 ```{r fig.width=10, fig.height=5}
-# Plot F1 score vs threshold
 threshold_df <- data.frame(threshold = thresholds, f1_score = f1_scores)
 
 ggplot(threshold_df, aes(x = threshold, y = f1_score)) +
@@ -1436,18 +1328,14 @@ calculate_metrics <- function(actual, predicted) {
   ))
 }
 
-# Classification at optimal threshold
 pred_optimal <- ifelse(model_data$predicted_prob > optimal_threshold, 1, 0)
 metrics_optimal <- calculate_metrics(model_data$fraudulent, pred_optimal)
-
-# Classification at default threshold 0.5 for comparison
 pred_default <- ifelse(model_data$predicted_prob > 0.5, 1, 0)
 metrics_default <- calculate_metrics(model_data$fraudulent, pred_default)
 
-cat("=== Confusion Matrix (threshold = ", round(optimal_threshold, 3), ") ===\n\n", sep = "")
+cat("Confusion Matrix (threshold = ", round(optimal_threshold, 3), ") ===\n\n", sep = "")
 print(metrics_optimal$confusion)
 
-cat("\n=== Performance Metrics at Optimal Threshold ===\n\n")
 cat("Accuracy:", round(metrics_optimal$accuracy * 100, 2), "%\n")
 cat("Precision:", round(metrics_optimal$precision * 100, 2), "%\n")
 cat("Recall (Sensitivity):", round(metrics_optimal$recall * 100, 2), "%\n")
@@ -1484,7 +1372,6 @@ f1_score <- metrics_optimal$f1
 ### 9.9.3 ROC Curve and AUC
 
 ```{r fig.width=10, fig.height=5}
-# ROC Curve (manual calculation)
 thresholds <- seq(0, 1, by = 0.01)
 roc_data <- data.frame(
   threshold = thresholds,
