@@ -1230,6 +1230,7 @@ $H_1$: At least one coefficient != 0
 
 ```{r}
 lr_stat <- logit_model$null.deviance - logit_model$deviance
+lr_df <- logit_model$df.null - logit_model$df.residual
 lr_pvalue <- 1 - pchisq(lr_stat, df = lr_df)
 
 
