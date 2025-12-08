@@ -1426,9 +1426,9 @@ cat("Entry-level -> fraud:", ifelse(p_entry_greater < 0.05, "SUPPORTED", "NOT SU
 
 **Conclusion**
 
-This analysis identified several predictors of fraudulent job postings in a highly imbalanced dataset. The logistic regression model achieved an AUC of 0.86, indicating good discriminatory power, though the R² of 0.17 suggests the model explains only 17% of fraud variance.
+This analysis identified several predictors of fraudulent job postings in a highly imbalanced dataset. The logistic regression model achieved an AUC of 0.74. the R² of 0.17 suggests the model explains only 17% of fraud variance.
 
-The strongest fraud indicators are missing company profiles, absence of company logos, and lack of screening questions. Entry-level positions and telecommuting roles show elevated fraud risk, confirming that scammers target vulnerable, inexperienced job seekers.
+The strongest fraud indicators are missing company profiles, absence of company logos, and lack of screening questions. Entry-level positions and telecommuting roles show elevated fraud risk, confirming that scammers target inexperienced job seekers.
 
 Contrary to initial hypotheses, salary level does not significantly predict fraud, despite fraudulent postings having a higher mean salary. This apparent contradiction reflects fraud's U-shaped salary distribution: scammers employ strategies, offering both unrealistically low wages to desperate candidates and extremely high to lure ambitious applicants.
 
