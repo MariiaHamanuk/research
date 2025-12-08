@@ -985,16 +985,16 @@ Hypothesis 3: Empty Company Profile Proportion (Z-tests): Reject $H_0$
 
 Hypothesis 4: California Fraud Rate (One-sided Z-test): Reject $H_0$
 
-# Logistic Regression
+**Logistic Regression**
 
 In the previous sections we compared means and proportions between real and fraudulent postings using classical parametric tests. We now move to a binary classifier - logistic regression, which allows us to model the probability that a posting is fraudulent as a function of several predictors simultaneously.
 
-**Model specification:**
+1.  **Model specification:**
 
 Let:
 
--   $Y_i \in \{0, 1\}$ be the response for posting $i$, where $Y_i = 1$ if the posting is fraudulent and $Y_i = 0$ if it is real
--   $X_i = (x_{i1}, \ldots, x_{ip})^\top$ be the vector of predictors for posting $i$ (e.g., salary range, length of description, missing company profile, location, required experience, etc.)
+-   $Y_i \in \{0, 1\}$ be the response for posting i, where $Y_i = 1$ if the posting is fraudulent and $Y_i = 0$ if it is real
+-   $X_i = (x_{i1}, \ldots, x_{ip})$ be the vector of predictors for posting $i$ (e.g., salary range, length of description, missing company profile, location, required experience, etc.)
 -   $\pi_i = P(Y_i = 1 | X_i)$ be the conditional probability that posting $i$ is fraudulent
 
 The logistic regression model assumes that: $$
@@ -1009,11 +1009,11 @@ Equivalently, the conditional probability has the form: $$
 \pi_i = P(Y_i = 1 | X_i) = \frac{\exp(\eta_i)}{1 + \exp(\eta_i)}
 $$
 
-For each coefficient $\beta_j$ ($j = 1, \ldots, p$), the quantity $\exp(\beta_j)$ is the **odds ratio** associated with a one-unit increase in $x_{ij}$, holding all other predictors fixed.
+For each coefficient $\beta_j$ ($j = 1, \ldots, p$), the quantity $\exp(\beta_j)$ is the likelihood odd ratio associated with a one-unit increase in $x_{ij}$, holding all other predictors fixed.
 
-## 9.2 Estimation
+2.  **Estimation**
 
-The parameters $\beta = (\beta_0, \ldots, \beta_p)^\top$ are estimated by **maximum likelihood**. The likelihood function is: $$
+The parameters $\beta = (\beta_0, \ldots, \beta_p)$ are estimated by **maximum likelihood**. The likelihood function is: $$
 L(\beta) = \prod_{i=1}^{n} \pi_i^{Y_i} (1 - \pi_i)^{1-Y_i}
 $$
 
@@ -1023,7 +1023,7 @@ We typically work with the log-likelihood: $$
 \ell(\beta) = \sum_{i=1}^{n} [Y_i \log(\pi_i) + (1 - Y_i) \log(1 - \pi_i)]
 $$
 
-There is no closed-form solution for $\hat{\beta}$, so numerical optimization (e.g., iteratively reweighted least squares) is used to obtain the maximum likelihood estimator (MLE) $\hat{\beta}$ and its estimated covariance matrix $\widehat{\text{Var}}(\hat{\beta})$.
+There is no closed-form solution for $\hat{\beta}$, so numerical optimization (iteratively reweighted least squares) is used to obtain the maximum likelihood estimator (MLE) $\hat{\beta}$ and its estimated covariance matrix $\widehat{\text{Var}}(\hat{\beta})$.
 
 -   **Likelihood Ratio Tests for Individual Coefficients**
 
@@ -1031,13 +1031,12 @@ $$
 \text{Reject } H_0 \text{ if } Z_j < -z_{1-\alpha} \quad \text{for } H_1: \beta_j < 0
 $$
 
-## 9.4 Prepare Data for Logistic Regression
+## Prepare Data for Logistic Regression
 
 ```{r}
 model_data <- data %>%
   filter(is_us) %>%
   mutate(
-    # standardize salary
     salary_standardized = ifelse(is.na(salary_mid), median(salary_mid, na.rm = TRUE), salary_mid),
     salary_standardized = scale(salary_standardized)[,1],
     desc_length_standardized = scale(desc_length)[,1],
@@ -1051,13 +1050,12 @@ model_data <- data %>%
   select(fraudulent, salary_standardized, desc_length_standardized, missing_profile,
          entry_level, has_logo, has_questions, telecommuting, california)
 
-cat("Model data prepared:\n")
 cat("Observations:", nrow(model_data), "\n")
 cat("Variables:", ncol(model_data), "\n\n")
 str(model_data)
 ```
 
-## 9.5 Fit Logistic Regression Model
+**Fit logistic regression model**
 
 ```{r}
 logit_model <- glm(fraudulent ~ salary_standardized + desc_length_standardized +
@@ -1069,7 +1067,7 @@ logit_model <- glm(fraudulent ~ salary_standardized + desc_length_standardized +
 summary(logit_model)
 ```
 
-## 9.6 Interpretation of Coefficients
+**Interpretation of coefficients**
 
 ```{r}
 coef_table <- summary(logit_model)$coefficients
@@ -1090,11 +1088,9 @@ coef_df_print[, 1:7] <- round(coef_df_print[, 1:7], 4)
 print(coef_df_print)
 ```
 
-Odd ratios with95% CI
+**Odd ratios with 95% CI**
 
 ```{r}
-cat("Signif. codes: '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1\n\n")
-
 for (i in 1:nrow(coef_df)) {
   var_name <- rownames(coef_df)[i]
   or <- round(coef_df$OddsRatio[i], 4)
@@ -1107,25 +1103,22 @@ for (i in 1:nrow(coef_df)) {
 }
 ```
 
-## 9.7 Hypotheses About Predictors
+**Hypotheses about predictors**
 
 Based on the interim report, we test the following directional hypotheses:
 
-### (1) Salary Level
+1.  **Salary level**
 
-We expect unrealistically high salaries to be associated with a higher probability of fraud. $$
-H_0: \beta_{sal} = 0 \quad \text{vs.} \quad H_1: \beta_{sal} > 0
-$$
+    We expect unrealistically high salaries to be associated with a higher probability of fraud. $$
+    H_0: \beta_{sal} = 0 \quad \text{vs.} \quad H_1: \beta_{sal} > 0
+    $$
 
 ```{r}
-# One-sided test for salary coefficient
 beta_sal <- coef(logit_model)["salary_standardized"]
 se_sal <- summary(logit_model)$coefficients["salary_standardized", "Std. Error"]
 z_sal <- beta_sal / se_sal
 p_sal_greater <- 1 - pnorm(z_sal)
 
-cat("=== Hypothesis: Higher salary increases fraud odds ===\n")
-cat("H0: beta_sal = 0 vs H1: beta_sal > 0\n\n")
 cat("Coefficient:", round(beta_sal, 4), "\n")
 cat("Std. Error:", round(se_sal, 4), "\n")
 cat("Z-statistic:", round(z_sal, 4), "\n")
@@ -1133,17 +1126,17 @@ cat("P-value (one-sided):", format(p_sal_greater, scientific = TRUE, digits = 4)
 cat("Odds Ratio:", round(exp(beta_sal), 4), "\n\n")
 
 if (p_sal_greater < 0.05) {
-  cat("Result: REJECT H0 - Higher salary significantly increases fraud odds.\n")
+cat("Result: REJECT H0 - Higher salary significantly increases fraud odds.\n")
 } else {
-  cat("Result: FAIL TO REJECT H0 - No significant effect of salary on fraud.\n")
+cat("Result: FAIL TO REJECT H0 - No significant effect of salary on fraud.\n")
 }
 ```
 
-### (2) Missing Company Profile
+2.  **missing company profile**
 
-Postings with missing company profiles are expected to be more likely to be fake. $$
-H_0: \beta_{prof} = 0 \quad \text{vs.} \quad H_1: \beta_{prof} > 0
-$$
+    Postings with missing company profiles are expected to be more likely to be fake. $$
+    H_0: \beta_{prof} = 0 \quad \text{vs.} \quad H_1: \beta_{prof} > 0
+    $$
 
 ```{r}
 beta_prof <- coef(logit_model)["missing_profile"]
@@ -1151,7 +1144,6 @@ se_prof <- summary(logit_model)$coefficients["missing_profile", "Std. Error"]
 z_prof_logit <- beta_prof / se_prof
 p_prof_greater <- 1 - pnorm(z_prof_logit)
 
-cat("H0: beta_prof = 0 vs H1: beta_prof > 0\n\n")
 cat("Coefficient:", round(beta_prof, 4), "\n")
 cat("Std. Error:", round(se_prof, 4), "\n")
 cat("Z-statistic:", round(z_prof_logit, 4), "\n")
@@ -1165,13 +1157,14 @@ if (p_prof_greater < 0.05) {
 } else {
   cat("Result: FAIL TO REJECT H0 - No significant effect of missing profile on fraud.\n")
 }
+
 ```
 
-### (3) Length of Description
+3.  **Length of the description**
 
-Extremely short descriptions are expected to be more suspicious, so longer descriptions may decrease fraud probability. $$
-H_0: \beta_{len} = 0 \quad \text{vs.} \quad H_1: \beta_{len} < 0
-$$
+    Extremely short descriptions are expected to be more suspicious, so longer descriptions may decrease fraud probability. $$
+    H_0: \beta_{len} = 0 \quad \text{vs.} \quad H_1: \beta_{len} < 0
+    $$
 
 ```{r}
 beta_len <- coef(logit_model)["desc_length_standardized"]
@@ -1179,7 +1172,6 @@ se_len <- summary(logit_model)$coefficients["desc_length_standardized", "Std. Er
 z_len <- beta_len / se_len
 p_len_less <- pnorm(z_len)
 
-cat("H0: beta_len = 0 vs H1: beta_len < 0\n\n")
 cat("Coefficient:", round(beta_len, 4), "\n")
 cat("Std. Error:", round(se_len, 4), "\n")
 cat("Z-statistic:", round(z_len, 4), "\n")
@@ -1195,11 +1187,11 @@ if (p_len_less < 0.05) {
 }
 ```
 
-### (4) Entry-Level Experience
+4.  **Entry level experience**
 
-Scammers may target inexperienced candidates. $$
-H_0: \beta_{entry} = 0 \quad \text{vs.} \quad H_1: \beta_{entry} > 0
-$$
+    Scammers may target inexperienced candidates. $$
+    H_0: \beta_{entry} = 0 \quad \text{vs.} \quad H_1: \beta_{entry} > 0
+    $$
 
 ```{r}
 beta_entry <- coef(logit_model)["entry_level"]
@@ -1207,7 +1199,6 @@ se_entry <- summary(logit_model)$coefficients["entry_level", "Std. Error"]
 z_entry <- beta_entry / se_entry
 p_entry_greater <- 1 - pnorm(z_entry)
 
-cat("H0: beta_entry = 0 vs H1: beta_entry > 0\n\n")
 cat("Coefficient:", round(beta_entry, 4), "\n")
 cat("Std. Error:", round(se_entry, 4), "\n")
 cat("Z-statistic:", round(z_entry, 4), "\n")
@@ -1219,50 +1210,48 @@ if (p_entry_greater < 0.05) {
 } else {
   cat("Result: FAIL TO REJECT H0 - No significant effect of experience level on fraud.\n")
 }
-```
 
-## 9.8 Model Diagnostics
+```
 
 ```{r}
 cat("Log-Likelihood:", round(logLik(logit_model)[1], 2), "\n")
-
-cat("AIC:", round(AIC(logit_model), 2), "\n")
-cat("BIC:", round(BIC(logit_model), 2), "\n\n")
 
 cat("Null Deviance:", round(logit_model$null.deviance, 2), "on", logit_model$df.null, "df\n")
 cat("Residual Deviance:", round(logit_model$deviance, 2), "on", logit_model$df.residual, "df\n\n")
 
 null_model <- glm(fraudulent ~ 1, data = model_data, family = binomial)
 mcfadden_r2 <- 1 - (logLik(logit_model)[1] / logLik(null_model)[1])
-cat("McFadden's R-squared:", round(mcfadden_r2, 4), "\n")
+cat("R-squared of logistic regression:", round(mcfadden_r2, 4), "\n")
 ```
+
+$H_0$: All coefficients = 0 (model without predictors)
+
+$H_1$: At least one coefficient != 0
 
 ```{r}
 lr_stat <- logit_model$null.deviance - logit_model$deviance
-lr_df <- logit_model$df.null - logit_model$df.residual
 lr_pvalue <- 1 - pchisq(lr_stat, df = lr_df)
 
-cat("H0: All coefficients = 0 (null model)\n")
-cat("H1: At least one coefficient != 0\n\n")
+
 cat("LR Statistic:", round(lr_stat, 2), "\n")
-cat("Degrees of freedom:", lr_df, "\n")
 cat("P-value:", format(lr_pvalue, scientific = TRUE, digits = 4), "\n\n")
 
 if (lr_pvalue < 0.05) {
-  cat("Result: REJECT H0 - The model is significantly better than the null model.\n")
+  cat("Result: REJECT H0 - The model is significantly better than model without predictors.\n")
 } else {
-  cat("Result: FAIL TO REJECT H0 - The model is not significantly better than the null.\n")
+  cat("Result: FAIL TO REJECT H0 - The model is not significantly better than the model without predictors.\n")
 }
 ```
 
-## 9.9 Prediction Performance
+**Prediction Performance**
 
-### 9.9.1 Find Optimal Threshold
+### 
+
+Find optimal threshold by optimizing F1 score
 
 ```{r}
 model_data$predicted_prob <- predict(logit_model, type = "response")
 
-# Find optimal threshold by maximizing F1 score
 thresholds <- seq(0.01, 0.99, by = 0.01)
 f1_scores <- sapply(thresholds, function(t) {
   pred <- ifelse(model_data$predicted_prob > t, 1, 0)
@@ -1303,10 +1292,10 @@ ggplot(threshold_df, aes(x = threshold, y = f1_score)) +
   theme_minimal()
 ```
 
-### 9.9.2 Performance at Optimal Threshold
+Performance at optimal threshold
 
 ```{r}
-# Helper function to calculate metrics
+
 calculate_metrics <- function(actual, predicted) {
   TP <- sum(predicted == 1 & actual == 1)
   TN <- sum(predicted == 0 & actual == 0)
@@ -1333,7 +1322,7 @@ metrics_optimal <- calculate_metrics(model_data$fraudulent, pred_optimal)
 pred_default <- ifelse(model_data$predicted_prob > 0.5, 1, 0)
 metrics_default <- calculate_metrics(model_data$fraudulent, pred_default)
 
-cat("Confusion Matrix (threshold = ", round(optimal_threshold, 3), ") ===\n\n", sep = "")
+cat("Confusion Matrix (threshold = ", round(optimal_threshold, 3), ")\n\n", sep = "")
 print(metrics_optimal$confusion)
 
 cat("Accuracy:", round(metrics_optimal$accuracy * 100, 2), "%\n")
@@ -1342,34 +1331,27 @@ cat("Recall (Sensitivity):", round(metrics_optimal$recall * 100, 2), "%\n")
 cat("Specificity:", round(metrics_optimal$specificity * 100, 2), "%\n")
 cat("F1 Score:", round(metrics_optimal$f1, 4), "\n")
 
-cat("\n=== Comparison with Default Threshold (0.5) ===\n\n")
-cat(sprintf("%-20s %10s %10s\n", "Metric", "Optimal", "Default"))
-cat(sprintf("%-20s %10s %10s\n", paste(rep("-", 20), collapse=""),
-            paste(rep("-", 10), collapse=""), paste(rep("-", 10), collapse="")))
-cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Accuracy",
-            metrics_optimal$accuracy * 100, metrics_default$accuracy * 100))
-cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Precision",
-            metrics_optimal$precision * 100, metrics_default$precision * 100))
-cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Recall",
-            metrics_optimal$recall * 100, metrics_default$recall * 100))
-cat(sprintf("%-20s %9.2f%% %9.2f%%\n", "Specificity",
-            metrics_optimal$specificity * 100, metrics_default$specificity * 100))
-cat(sprintf("%-20s %10.4f %10.4f\n", "F1 Score",
-            metrics_optimal$f1, metrics_default$f1))
+cat("Comparison with Default Threshold specifically (0.5)\n\n")
+cat("Accuracy:\n")
+cat("Optimal: ", metrics_optimal$accuracy *100, "Default: ",  metrics_default$accuracy *100,"\n")
+cat("Precision:\n")
+cat("Optimal: ", metrics_optimal$precision * 100, "Default: ",  metrics_default$precision * 100,"\n")
+cat("Recall:\n")
+cat("Optimal: ", metrics_optimal$recall * 100, "Default: ",  metrics_default$recall * 100,"\n")
+cat("Specificity:\n")
+cat("Optimal: ",metrics_optimal$specificity * 100, "Default: ",  metrics_optimal$specificity * 100,"\n")
+cat("F1 Score:\n")
+cat("Optimal: ", metrics_optimal$f1 * 100, "Default: ",  metrics_optimal$f1 * 100,"\n")
 
-cat("\nInterpretation:\n")
-cat("- Optimal threshold balances precision and recall for fraud detection\n")
-cat("- Lower threshold increases recall (catches more frauds) at cost of some precision\n")
-cat("- For fraud detection, higher recall is often preferred to minimize false negatives\n")
-
-# Store for later use
 accuracy <- metrics_optimal$accuracy
 precision <- metrics_optimal$precision
 recall <- metrics_optimal$recall
 f1_score <- metrics_optimal$f1
 ```
 
-### 9.9.3 ROC Curve and AUC
+We can see comparing to the default metrics that our model performs really poorly using default threshold: Precision 0, F1 0 and so on. That happens because of the imbalance in our dataset. Key insights: optimal threshold balances precision and recall for fraud detection, lower threshold increases recall (catches more frauds) at cost of some precision for fraud detection, higher recall is often preferred to minimize false negatives.
+
+**Receiver Operating Characteristic curve and Area Under the Curve**
 
 ```{r fig.width=10, fig.height=5}
 thresholds <- seq(0, 1, by = 0.01)
@@ -1385,11 +1367,9 @@ roc_data <- data.frame(
   })
 )
 
-# Calculate AUC using trapezoidal rule
 roc_data <- roc_data[order(roc_data$FPR), ]
 auc <- sum(diff(roc_data$FPR) * (head(roc_data$TPR, -1) + tail(roc_data$TPR, -1)) / 2)
 
-# Find the point on ROC curve for optimal threshold
 optimal_point <- roc_data[which.min(abs(roc_data$threshold - optimal_threshold)), ]
 
 ggplot(roc_data, aes(x = FPR, y = TPR)) +
@@ -1410,18 +1390,14 @@ ggplot(roc_data, aes(x = FPR, y = TPR)) +
 cat("\nAUC:", round(abs(auc), 4), "\n")
 ```
 
-## 9.10 Summary of Logistic Regression Results
+Summary:
 
 ```{r}
-cat("=== SUMMARY OF LOGISTIC REGRESSION ANALYSIS ===\n\n")
-
-cat("MODEL FIT:\n")
-cat("  McFadden's R-squared:", round(mcfadden_r2, 4), "\n")
-cat("  AIC:", round(AIC(logit_model), 2), "\n")
-cat("  Model is", ifelse(lr_pvalue < 0.05, "SIGNIFICANT", "NOT SIGNIFICANT"),
+cat("R-squared for logistic regression:", round(mcfadden_r2, 4), "\n")
+cat("Model is", ifelse(lr_pvalue < 0.05, "significant", "not significant"),
     "(LR test p-value:", format(lr_pvalue, scientific = TRUE, digits = 4), ")\n\n")
 
-cat("SIGNIFICANT PREDICTORS (alpha = 0.05):\n")
+cat("significant predictors (alpha = 0.05):\n")
 sig_predictors <- rownames(coef_df)[coef_df$p.value < 0.05 & rownames(coef_df) != "(Intercept)"]
 if (length(sig_predictors) > 0) {
   for (pred in sig_predictors) {
@@ -1433,16 +1409,28 @@ if (length(sig_predictors) > 0) {
   cat("  None\n")
 }
 
-cat("\nPREDICTION PERFORMANCE (at optimal threshold =", round(optimal_threshold, 3), "):\n")
+cat("prediction performance (at optimal threshold =", round(optimal_threshold, 3), "):\n")
 cat("  Accuracy:", round(accuracy * 100, 2), "%\n")
 cat("  Precision:", round(precision * 100, 2), "%\n")
 cat("  Recall:", round(recall * 100, 2), "%\n")
 cat("  F1 Score:", round(f1_score, 4), "\n")
 cat("  AUC:", round(abs(auc), 4), "\n")
 
-cat("\nHYPOTHESES ABOUT PREDICTORS:\n")
-cat("  (1) Salary -> fraud:", ifelse(p_sal_greater < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
-cat("  (2) Missing profile -> fraud:", ifelse(p_prof_greater < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
-cat("  (3) Longer desc -> less fraud:", ifelse(p_len_less < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
-cat("  (4) Entry-level -> fraud:", ifelse(p_entry_greater < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
+cat("Hypotheses about predictors:\n")
+cat("Salary -> fraud:", ifelse(p_sal_greater < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
+cat("Missing profile -> fraud:", ifelse(p_prof_greater < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
+cat("Longer desc -> less fraud:", ifelse(p_len_less < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
+cat("Entry-level -> fraud:", ifelse(p_entry_greater < 0.05, "SUPPORTED", "NOT SUPPORTED"), "\n")
 ```
+
+**Conclusion**
+
+This analysis identified several predictors of fraudulent job postings in a highly imbalanced dataset. The logistic regression model achieved an AUC of 0.86, indicating good discriminatory power, though the R² of 0.17 suggests the model explains only 17% of fraud variance.
+
+The strongest fraud indicators are missing company profiles, absence of company logos, and lack of screening questions. Entry-level positions and telecommuting roles show elevated fraud risk, confirming that scammers target vulnerable, inexperienced job seekers.
+
+Contrary to initial hypotheses, salary level does not significantly predict fraud, despite fraudulent postings having a higher mean salary. This apparent contradiction reflects fraud's U-shaped salary distribution: scammers employ strategies, offering both unrealistically low wages to desperate candidates and extremely high to lure ambitious applicants.
+
+Model Performance and Limitations: At the optimized threshold, the model achieves 51.92% recall and 42% precision, meaning 58% of fraud flags are false positives. While this aggressive threshold maximizes fraud detection, false positives may deter legitimate job seekers, while false negatives expose vulnerable individuals to scams. The moderate F1 score reflects the difficulty of detecting rare events in highly imbalanced dataset.
+
+Job platforms should implement automated screening that flags postings lacking company profiles, logos, or screening questions -these features collectively provide a reliable fraud signal. However, statistical models alone cannot solve this problem; the 17% explained variance indicates that unobserved factors likely play crucial roles.
